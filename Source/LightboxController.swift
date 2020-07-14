@@ -190,6 +190,9 @@ open class LightboxController: UIViewController {
     if !presented {
       presented = true
       configureLayout(view.bounds.size)
+      if LightboxConfig.autoplayInitialVideo, let videoURL = images[currentPage].videoURL {
+        LightboxConfig.handleVideo(self, videoURL)
+      }
     }
   }
 

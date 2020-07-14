@@ -7,6 +7,9 @@ public class LightboxConfig {
   /// Whether to show status bar while Lightbox is presented
   public static var hideStatusBar = true
 
+  /// Whether to auto-play video if associated with the inital page when the Lightbox is presented
+  public static var autoplayInitialVideo = false
+
   /// Provide a closure to handle selected video
   public static var handleVideo: (_ from: UIViewController, _ videoURL: URL) -> Void = { from, videoURL in
     let videoController = AVPlayerViewController()
