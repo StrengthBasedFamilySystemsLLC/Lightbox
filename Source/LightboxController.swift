@@ -94,6 +94,12 @@ open class LightboxController: UIViewController {
 
       pageDelegate?.lightboxController(self, didMoveToPage: currentPage)
 
+      for page in pageViews {
+        page.inlineVideoPlayer?.player?.pause()
+      }
+      if LightboxConfig.autoplayInlineVideos {
+        pageViews[currentPage].inlineVideoPlayer?.player?.play()
+      }
       if let image = pageViews[currentPage].imageView.image, dynamicBackground {
         DispatchQueue.main.asyncAfter(deadline: DispatchTime.now() + 0.125) {
           self.loadDynamicBackground(image)
@@ -209,6 +215,15 @@ open class LightboxController: UIViewController {
     if !presented {
       presented = true
       configureLayout(view.bounds.size)
+    }
+  }
+
+  open override func viewWillDisappear(_ animated: Bool) {
+    super .viewWillDisappear(animated)
+    if isBeingDismissed {
+      for page in pageViews {
+        page.inlineVideoPlayer?.player?.pause()
+      }
     }
   }
 
@@ -412,6 +427,14 @@ extension LightboxController: PageViewDelegate {
 
     let visible = (headerView.alpha == 1.0)
     toggleControls(pageView: pageView, visible: !visible)
+  }
+
+  func pageWillAddInlinePlayerVC(_ playerVC: UIViewController) {
+    addChild(playerVC)
+  }
+
+  func pageDidAddInlinePlayerVC(_ playerVC: UIViewController) {
+    playerVC.didMove(toParent: self)
   }
 }
 

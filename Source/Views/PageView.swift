@@ -1,4 +1,5 @@
 import UIKit
+import AVKit
 
 protocol PageViewDelegate: class {
 
@@ -6,6 +7,8 @@ protocol PageViewDelegate: class {
   func remoteImageDidLoad(_ image: UIImage?, imageView: UIImageView)
   func pageView(_ pageView: PageView, didTouchPlayButton videoURL: URL)
   func pageViewDidTouch(_ pageView: PageView)
+  func pageWillAddInlinePlayerVC(_ playerVC: UIViewController)
+  func pageDidAddInlinePlayerVC(_ playerVC: UIViewController)
 }
 
 class PageView: UIScrollView {
@@ -46,6 +49,8 @@ class PageView: UIScrollView {
   }()
 
   lazy var loadingIndicator: UIView = LightboxConfig.makeLoadingIndicator()
+
+  var inlineVideoPlayer: AVPlayerViewController?
 
   var image: LightboxImage
   var contentFrame = CGRect.zero
@@ -105,7 +110,7 @@ class PageView: UIScrollView {
   }
 
   func updatePlayButton () {
-    if self.image.videoURL != nil && !subviews.contains(playButton) {
+    if self.image.videoURL != nil && !subviews.contains(playButton) && !LightboxConfig.inlineVideos {
       addSubview(playButton)
     } else if self.image.videoURL == nil && subviews.contains(playButton) {
       playButton.removeFromSuperview()
@@ -113,6 +118,8 @@ class PageView: UIScrollView {
   }
 
   // MARK: - Fetch
+  private var kvoTokenPlayerReady: NSKeyValueObservation?
+
   private func fetchImage () {
     loadingIndicator.alpha = 1
     self.image.addImageTo(imageView) { [weak self] image in
@@ -122,17 +129,41 @@ class PageView: UIScrollView {
 
       self.isUserInteractionEnabled = true
       self.configureImageView()
+      self.configureInlineVideoView()
       self.pageViewDelegate?.remoteImageDidLoad(image, imageView: self.imageView)
 
       UIView.animate(withDuration: 0.4) {
         self.loadingIndicator.alpha = 0
       }
     }
+    if LightboxConfig.inlineVideos, let videoURL = self.image.videoURL {
+      let player = AVPlayer(url: videoURL)
+      let playerViewController = AVPlayerViewController()
+      inlineVideoPlayer = playerViewController
+      playerViewController.player = player
+      DispatchQueue.main.async {
+        self.pageViewDelegate?.pageWillAddInlinePlayerVC(playerViewController)
+        self.addSubview(playerViewController.view)
+        self.kvoTokenPlayerReady = playerViewController.observe(\.isReadyForDisplay, options: .initial) { (playerController, change) in
+          self.configureInlineVideoView()
+        }
+        self.pageViewDelegate?.pageDidAddInlinePlayerVC(playerViewController)
+        self.configureInlineVideoView()
+      }
+    }
+  }
+
+  deinit {
+    kvoTokenPlayerReady?.invalidate()
   }
 
   // MARK: - Recognizers
 
   @objc func scrollViewDoubleTapped(_ recognizer: UITapGestureRecognizer) {
+    if image.videoURL != nil && LightboxConfig.inlineVideos {
+      return
+    }
+
     let pointInView = recognizer.location(in: imageView)
     let newZoomScale = zoomScale > minimumZoomScale
       ? minimumZoomScale
@@ -205,6 +236,54 @@ class PageView: UIScrollView {
     imageView.frame = imageViewFrame
   }
 
+  func configureInlineVideoView() {
+    guard let player = inlineVideoPlayer, let playerView = player.view else { return }
+
+    var ratio = CGFloat(1)
+    if let imageSize = imageView.image?.size, imageSize.height > 0, imageSize.width > 0 {
+      ratio = imageSize.width / imageSize.height
+    }
+    if player.isReadyForDisplay, let presentationSize = player.player?.currentItem?.presentationSize, presentationSize.height > 0, presentationSize.width > 0 {
+      ratio = presentationSize.width / presentationSize.height
+    }
+    let playerViewSize = contentFrame.size
+    let realPlayerViewSize: CGSize
+
+    if ratio > playerViewSize.width / playerViewSize.height {
+      realPlayerViewSize = CGSize(
+        width: playerViewSize.width,
+        height: playerViewSize.width / ratio)
+    } else {
+      realPlayerViewSize = CGSize(
+        width: playerViewSize.height * ratio,
+        height: playerViewSize.height)
+    }
+
+    playerView.frame = CGRect(origin: CGPoint.zero, size: realPlayerViewSize)
+
+    centerPlayerView()
+  }
+
+  func centerPlayerView() {
+    guard let player = inlineVideoPlayer, let playerView = player.view else { return }
+    let boundsSize = contentFrame.size
+    var playerViewFrame = playerView.frame
+
+    if playerViewFrame.size.width < boundsSize.width {
+      playerViewFrame.origin.x = (boundsSize.width - playerViewFrame.size.width) / 2.0
+    } else {
+      playerViewFrame.origin.x = 0.0
+    }
+
+    if playerViewFrame.size.height < boundsSize.height {
+      playerViewFrame.origin.y = (boundsSize.height - playerViewFrame.size.height) / 2.0
+    } else {
+      playerViewFrame.origin.y = 0.0
+    }
+
+    playerView.frame = playerViewFrame
+  }
+
   // MARK: - Action
 
   @objc func playButtonTouched(_ button: UIButton) {
@@ -223,8 +302,10 @@ extension PageView: LayoutConfigurable {
     contentSize = frame.size
     imageView.frame = frame
     zoomScale = minimumZoomScale
+    inlineVideoPlayer?.view.frame = frame
 
     configureImageView()
+    configureInlineVideoView()
   }
 }
 
@@ -233,7 +314,7 @@ extension PageView: LayoutConfigurable {
 extension PageView: UIScrollViewDelegate {
 
   func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-    return imageView
+    return (image.videoURL != nil && LightboxConfig.inlineVideos) ? nil : imageView
   }
 
   func scrollViewDidZoom(_ scrollView: UIScrollView) {

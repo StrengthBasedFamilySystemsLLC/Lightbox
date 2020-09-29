@@ -7,6 +7,12 @@ public class LightboxConfig {
   /// Whether to show status bar while Lightbox is presented
   public static var hideStatusBar = true
 
+  /// Whether to display and play videos inline, rather than as modals.
+  public static var inlineVideos = false
+
+  /// Whether inlined videos (if inlineVideos == true), will begin playing when displayed
+  public static var autoplayInlineVideos = false
+
   /// Provide a closure to handle selected video
   public static var handleVideo: (_ from: UIViewController, _ videoURL: URL) -> Void = { from, videoURL in
     let videoController = AVPlayerViewController()
